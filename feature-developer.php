@@ -4,7 +4,7 @@ class Login_Addon extends Addon {
   function get_defaults() {
     return wp_parse_args(array(
       'views' => array(
-        array(
+        'login' => array(
           'name'      => 'login',
           'url'       => 'login',
           'callbacks' => array(
@@ -15,6 +15,7 @@ class Login_Addon extends Addon {
       ),
       'forms' => array(
         'login'       => array(
+          'name'        => 'login',
           'title'       => __( 'Login' ),
           'fields'      => array(
             array(
@@ -30,6 +31,7 @@ class Login_Addon extends Addon {
           ),
         ),
         'register'    => array(
+          'name'        => 'register',
           'title'       => __( 'Register' ),
           'fields'      => array(
             array(
@@ -53,4 +55,4 @@ class Login_Addon extends Addon {
   }
 
 }
-ScaleUp::register( 'addon', array( 'name' => 'login' ) );
+ScaleUp::register( 'addon', array( 'name' => 'login', '__CLASS__' => 'Login_Addon' ) );
