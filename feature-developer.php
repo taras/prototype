@@ -1,5 +1,5 @@
 <?php
-class Login_Addon extends Addon {
+class ScaleUp_Login_Addon extends ScaleUp_Addon {
 
   function get_defaults() {
     return wp_parse_args(array(
@@ -55,4 +55,4 @@ class Login_Addon extends Addon {
   }
 
 }
-ScaleUp::register( 'addon', array( 'name' => 'login', '__CLASS__' => 'Login_Addon' ) );
+ScaleUp::register( 'addon', array( 'name' => 'login', '__CLASS__' => 'ScaleUp_Login_Addon' ) );

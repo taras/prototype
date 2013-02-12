@@ -1,6 +1,6 @@
 <?php
-class WRKTG_App extends App {
+class WRKTG_App extends ScaleUp_App {
 
 }
-new WRKTG_App( array( 'name' => 'wrktg', 'url' => '/', 'addons' => array( 'login' ) ) );
+new WRKTG_ScaleUp_App( array( 'name' => 'wrktg', 'url' => '/', 'addons' => array( 'login' ) ) );
 echo '';

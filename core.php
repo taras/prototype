@@ -5,35 +5,35 @@ class ScaleUp {
 
   static $feature_types = array(
     'site' => array(
-      '__CLASS__' => 'Site',
+      '__CLASS__' => 'ScaleUp_Site',
       '_feature_type' => 'site',
       '_plural' => 'sites',
       '_supports' => array( 'apps', 'addons', 'views', 'forms' ),
       '_duck_types' => array( 'routable' ),
     ),
     'app' => array(
-      '__CLASS__' => 'App',
+      '__CLASS__' => 'ScaleUp_App',
       '_feature_type' => 'app',
       '_plural' => 'apps',
       '_supports' => array( 'addons', 'views', 'forms' ),
       '_duck_types' => array( 'routable', 'contextual' ),
     ),
     'addon' => array(
-      '__CLASS__' => 'Addon',
+      '__CLASS__' => 'ScaleUp_Addon',
       '_feature_type' => 'addon',
       '_plural' => 'addons',
       '_supports' => array( 'views', 'forms' ),
       '_duck_types' => array( 'routable', 'contextual' ),
     ),
     'view' => array(
-      '__CLASS__' => 'View',
+      '__CLASS__' => 'ScaleUp_View',
       '_feature_type' => 'view',
       '_plural' => 'views',
       '_supports' => array( 'forms' ),
       '_duck_types' => array( 'routable', 'contextual' ),
     ),
     'form' => array(
-      '__CLASS__' => 'Form',
+      '__CLASS__' => 'ScaleUp_Form',
       '_feature_type' => 'form',
       '_plural' => 'forms',
     ),
@@ -48,7 +48,7 @@ class ScaleUp {
       return new WP_Error( 'instantiation-error', 'ScaleUp class is a singleton and can only be instantiated once.' );
     } else {
       self::$_this = $this;
-      $this->site  = new Site( array( 'name' => 'WordPress' ) );
+      $this->site  = new ScaleUp_Site( array( 'name' => 'WordPress' ) );
     }
 
   }
@@ -87,7 +87,7 @@ class ScaleUp {
 }
 
 
-class Base extends stdClass {
+class ScaleUp_Base extends stdClass {
 
   function __construct( $args = array() ) {
 
@@ -164,14 +164,14 @@ class Base extends stdClass {
 
 }
 
-class Feature extends Base {
+class ScaleUp_Feature extends ScaleUp_Base {
 
   var $_features;
 
   function __construct( $args ) {
     parent::__construct( $args );
 
-    $this->_features = new Base();
+    $this->_features = new ScaleUp_Base();
 
     $feature_type = $this->get( '_feature_type' );
     $this->load( wp_parse_args( $args, ScaleUp::$feature_types[ $feature_type ] ) );
@@ -183,6 +183,9 @@ class Feature extends Base {
       $context = $scaleup->site;
     }
 
+    // this registers and activates features when developer instantiates a feature with new keyword
+    // _activated args is used to prevent automatic registration and activation of features that are instantiated via
+    // activate method
     if ( is_object( $context ) && !$context->is_registered( $feature_type, $this ) && !isset( $args[ '_activated' ] ) ) {
       $context->register( $feature_type, $this );
       $context->activate( $feature_type, $this );
@@ -209,7 +212,7 @@ class Feature extends Base {
    * Check if a feature is registered. Feature can be an object, an array or a string.
    *
    * @param $feature_type
-   * @param $feature Feature|array|string
+   * @param $feature ScaleUp_Feature|array|string
    * @return bool
    */
   function is_registered( $feature_type, $feature ) {
@@ -221,7 +224,7 @@ class Feature extends Base {
    *
    * @param $feature_type
    * @param $feature
-   * @return null|Feature
+   * @return null|ScaleUp_Feature
    */
   function get_feature( $feature_type, $feature ) {
 
@@ -273,7 +276,7 @@ class Feature extends Base {
       $plural = ScaleUp::$feature_types[ $feature_type ][ '_plural' ];
 
       if ( !$this->_features->has( $plural ) ) {
-        $this->_features->set( $plural, new Base() );
+        $this->_features->set( $plural, new ScaleUp_Base() );
       }
 
       $storage = $this->_features->get( $plural );
@@ -324,7 +327,7 @@ class Feature extends Base {
    * @param $feature_type
    * @param $feature
    * @param array $args
-   * @return Feature|WP_Error
+   * @return ScaleUp_Feature|WP_Error
    */
   function activate( $feature_type, $feature, $args = array() ) {
 
@@ -337,7 +340,7 @@ class Feature extends Base {
 
       // create new feature container
       if ( !$this->_features->has( $plural ) ) {
-        $this->_features->set( $plural, new Base() );
+        $this->_features->set( $plural, new ScaleUp_Base() );
       }
 
       // convinient object
@@ -471,7 +474,7 @@ class Feature extends Base {
 
 }
 
-class Site extends Feature {
+class ScaleUp_Site extends ScaleUp_Feature {
 
   private static $_this;
 
@@ -497,11 +500,11 @@ class Site extends Feature {
 
 }
 
-class Addon extends Feature {
+class ScaleUp_Addon extends ScaleUp_Feature {
 
 }
 
-class App extends Feature {
+class ScaleUp_App extends ScaleUp_Feature {
   function __construct( $args ) {
     parent::__construct( $args );
   }
@@ -514,7 +517,7 @@ class App extends Feature {
   }
 }
 
-class View extends Feature {
+class ScaleUp_View extends ScaleUp_Feature {
   function get_defaults() {
     return wp_parse_args(
       array(
@@ -523,7 +526,7 @@ class View extends Feature {
   }
 }
 
-class Form extends Feature {
+class ScaleUp_Form extends ScaleUp_Feature {
   function get_defaults() {
     return wp_parse_args(
       array(
