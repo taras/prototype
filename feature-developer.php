@@ -2,7 +2,7 @@
 class Login_Addon extends Addon {
 
   function get_defaults() {
-    return array(
+    return wp_parse_args(array(
       'views' => array(
         array(
           'name'      => 'login',
@@ -45,7 +45,7 @@ class Login_Addon extends Addon {
           ),
         ),
       ),
-    );
+    ), parent::get_defaults());
   }
 
   function initialize() {
@@ -53,4 +53,4 @@ class Login_Addon extends Addon {
   }
 
 }
-ScaleUp::register( 'addon', array( 'name' => 'login', '__CLASS__' => 'Login_Addon' ) );
+ScaleUp::register( 'addon', array( 'name' => 'login' ) );

@@ -2,13 +2,13 @@
 class ScaleUp {
 
   private static $_this;
-  private static $_features;
-  private static $_feature_types = array(
+
+  static $feature_types = array(
     'site'  => array(
       '__CLASS__'     => 'Site',
       '_feature_type' => 'site',
       '_plural'       => 'sites',
-      '_supports'     => array( 'apps' ),
+      '_supports'     => array( 'apps', 'addons', 'views', 'forms' ),
       '_duck_types'   => array( 'routable' ),
     ),
     'app'   => array(
@@ -38,21 +38,25 @@ class ScaleUp {
       '_plural'       => 'forms',
     ),
   );
-  private static $_duck_types;
+  static $duck_types;
+
+  var $site;
 
   function __construct() {
+
     if ( isset( self::$_this ) ) {
       return new WP_Error( 'instantiation-error', 'ScaleUp class is a singleton and can only be instantiated once.' );
     } else {
       self::$_this = $this;
+      $this->site = new Site( array( 'name' => 'WordPress' ) );
     }
-    self::$_features = new Base();
-    self::$_duck_types = array(
+
+    self::$duck_types = array(
       'routable' => array(
         'get_url' => function( $args = array() ) {
-          if ( ( property_exists( $this, 'get_context' ) && is_callable( $this->get_context ) ) || method_exists( $this, 'get_context' ) ) {
-            $context = $this->get_context();
-            if ( ( property_exists( $context, 'get_url' ) && is_callable( $context->get_url ) ) || method_exists( $context, 'get_url' ) ) {
+          if ( $this->is( 'contextual' ) && $this->has( 'context' ) && !is_null( $this->get( 'context' ) ) ) {
+            $context = $this->get( 'context' );
+            if ( $context->is( 'routable' ) ) {
               return $context->get_url() . '/' . $this->_url;
             }
           }
@@ -60,183 +64,24 @@ class ScaleUp {
             return $this->_url;
           }
           return null;
-        },
-        'is_routable' => function ( $args = array() ) {
-          return method_exists( $this, 'get_url' );
-        },
-      ),
-      'contextual' => array(
-        'is_contextual' => function( $args = array() ) {
-          if ( $this->has( 'context' ) ) {
-            $context = $this->get( 'context' );
-            return is_object( $context );
-          }
-          return false;
         }
       ),
+      'contextual' => array(),
     );
     add_filter( 'activate_feature', array( $this, 'add_duck_types') );
     add_filter( 'activate_feature', array( $this, 'add_support' ) );
   }
 
-  function this() {
+  static function this() {
     return self::$_this;
   }
 
-  /**
-   * Register feature and return complete arguments array for this feature.
-   * Registration is storing of feature's configuration array without instantiation.
-   *
-   * @param $feature_type
-   * @param $args
-   * @return array|WP_Error
-   */
-  function register( $feature_type, $args ) {
-
-    // make sure that its known feature
-    if ( isset( self::$_feature_types[ $feature_type ] ) ) {
-
-      $plural = self::$_feature_types[ $feature_type ][ '_plural' ];
-
-      if ( !self::$_features->has( $plural ) ) {
-        self::$_features->set( $plural, new Base() );
-      }
-
-      $storage = self::$_features->get( $plural );
-
-      $name = null;
-
-      if ( is_array( $args ) ) {
-        $args = wp_parse_args( $args, self::$_feature_types[ $feature_type ] );
-        if ( isset( $args[ 'name' ] ) ) {
-          $name = $args[ 'name' ];
-        }
-      } elseif ( is_object( $args ) ) {
-        $name = $args->get( 'name' );
-        $args->load( self::$_feature_types[ $feature_type ] );
-      }
-
-      /**
-       * @todo: Add validation here. Validation should happen based on '_requires' argument in $_feature_types declaration
-       */
-      if ( is_null( $name ) ) {
-        return new WP_Error( 'name-missing', __( 'Feature name is required.' ) );
-      }
-
-      $storage->set( $name, $args );
-
-    } else {
-      return new WP_Error( 'invalid-feature-type', sprintf( __( '%s is not a valid feature type.' ), $feature_type ) );
-    }
-
-    return $args;
+  static function register( $feature_type, $args ) {
+    self::$_this->site->register( $feature_type, $args );
   }
 
-  /**
-   * Check if a feature is registered. Feature can be an object, an array or a string.
-   *
-   * @param $feature_type
-   * @param $feature Base|array|string
-   * @return bool
-   */
-  function is_registered( $feature_type, $feature ) {
-
-    if ( is_object( $feature ) && method_exists( $feature, 'get' ) ) {
-      $name = $feature->get( 'name' );
-    } else if ( is_array( $feature ) ) {
-      if ( isset( $feature[ 'name' ] ) ) {
-        $name = $feature[ 'name' ];
-      }
-    } else if ( is_string( $feature ) ) {
-      $name = $feature;
-    } else {
-      return false;
-    }
-
-    // make sure that its a known feature
-    if ( isset( self::$_feature_types[ $feature_type ] ) ) {
-      $plural = self::$_feature_types[ $feature_type ][ '_plural' ];
-    } else {
-      return false;
-    }
-
-    if ( self::$_features->has( $plural ) ) {
-      $storage = self::$_features->get( $plural );
-      return $storage->get( $name );
-    } else {
-      return false;
-    }
-  }
-
-  /**
-   * Activation = Instantiation
-   *
-   * During activation, the object is populated with all its duck types and abilities that it supports.
-   *
-   * @see http://en.wikipedia.org/wiki/Duck_typing#In_PHP Duck Types in PHP
-   * Duck Types are methods that are added to the object to match its abilities. duck types are specified via
-   * _duck_types argument which takes an array of its types. Currently, the code supports 2 abilities: routable & contextual.
-   * a "routable" object can be accesed via a url and has a get_url method which returns url of the object.
-   * a "contextual" object can be nested inside of another object in which case it has a "context" property which points
-   * the object's container.
-   *
-   * Support array specifies what kind of features this object supports. For example, an instance of Site supports Apps.
-   * Futher, an App supports Addons, Views & Forms. This makes it possible to programmatically activate features of an
-   * object. This activation happens recursively making it possible to instantiate deeply nested features.
-   *
-   * @param $feature_type
-   * @param $feature
-   * @param array $args
-   * @return Feature|WP_Error
-   */
-  function activate( $feature_type, $feature, $args = array() ) {
-
-    $object = null;
-
-    // make sure that feature type is available
-    if ( isset( self::$_feature_types[ $feature_type ] ) ) {
-      // get plural name
-      $plural = self::$_feature_types[ $feature_type ][ '_plural' ];
-
-      // create new feature container
-      if ( !self::$_features->has( $plural ) ) {
-        self::$_features->set( $plural, new Base() );
-      }
-
-      // convinient object
-      $storage = self::$_features->get( $plural );
-
-      if ( is_object( $feature ) ) {    // feature was already instantiate it, we just need to store a reference to it in our internal storage
-        if ( method_exists( $feature, 'has' ) && $feature->has( 'name' ) ) {
-          $storage->set( $feature->get( 'name' ), $feature );
-          $object = $feature;
-        }
-      } elseif ( is_string( $feature ) ) {    // activation by feature name
-        if ( $storage->has( $feature ) ) {    // check that feature has been registered and has arguments
-          $object = $storage->get( $feature );
-          if ( is_array( $object ) ) {
-            $args[ 'name' ] = $feature;
-            $args = wp_parse_args( $object, $args );
-            if ( isset( $args[ '__CLASS__' ] ) ) {
-              $class = $args[ '__CLASS__' ];
-              if ( class_exists( $class ) ) {
-                $object = new $class( $args );
-              } else {
-                return new WP_Error( 'activation-failed', sprintf( __( '%s class does not exist.' ), $class ) );
-              }
-            }
-          } elseif ( is_object( $object ) ) {
-            // do nothing
-          } else {
-            return new WP_Error( 'activation-failed' , __( 'Registered feature could not be activated because arguments are not an array or object.' ) );
-          }
-        }
-      }
-    }
-    if ( is_object( $object ) ) {
-      $object = apply_filters( 'activate_feature', $object );
-    }
-    return $object;
+  static function activate( $feature_type, $name, $args = array() ) {
+    self::$_this->site->activate( $feature_type, $name, $args );
   }
 
   function add_support( $object ) {
@@ -299,9 +144,8 @@ class ScaleUp {
   function add_duck_types( $object ) {
     if ( $object->has( '_duck_types' ) && is_array( $object->get( '_duck_types' ) ) ) {
       $duck_types = $object->get( '_duck_types' );
-      $scaleup = ScaleUp::this();
       foreach ( $duck_types as $duck_type ) {
-        $methods = $scaleup::$_duck_types[ $duck_type ];
+        $methods = ScaleUp::$duck_types[ $duck_type ];
         foreach ( $methods as $name => $function ) {
           $this->$name = $function;
         }
@@ -309,6 +153,7 @@ class ScaleUp {
     }
     return $object;
   }
+
 }
 
 
@@ -387,16 +232,186 @@ class Base extends stdClass {
 }
 
 class Feature extends Base {
+
+  var $_features;
+
   function __construct( $args ) {
     parent::__construct( $args );
 
-    $scaleup = ScaleUp::this();
+    $this->_features = new Base();
 
     $feature_type = $this->get( '_feature_type' );
-    if ( !is_null( $feature_type ) && !$scaleup->is_registered( $feature_type, $this ) ) {
-      $scaleup->register( $feature_type, $this );
-      $scaleup->activate( $this->get( '_feature_type' ), $this );
+    $this->load( wp_parse_args( $args, ScaleUp::$feature_types[ $feature_type ] ) );
+
+    if ( $this->is( 'contextual' ) && $this->has( 'context' ) && !is_null( $this->get( 'context' ) ) ) {
+      $context = $this->get( 'context' );
+    } else {
+      $scaleup = ScaleUp::this();
+      $context = $scaleup->site;
     }
+
+    if ( is_object( $context ) && !$context->is_registered( $feature_type, $this ) ) {
+      $context->register( $feature_type, $this );
+      $context->activate( $feature_type, $this );
+    }
+  }
+
+  /**
+   * Check if a feature is registered. Feature can be an object, an array or a string.
+   *
+   * @param $feature_type
+   * @param $feature Feature|array|string
+   * @return bool
+   */
+  function is_registered( $feature_type, $feature ) {
+
+    if ( is_object( $feature ) && method_exists( $feature, 'get' ) ) {
+      $name = $feature->get( 'name' );
+    } else if ( is_array( $feature ) ) {
+      if ( isset( $feature[ 'name' ] ) ) {
+        $name = $feature[ 'name' ];
+      }
+    } else if ( is_string( $feature ) ) {
+      $name = $feature;
+    } else {
+      return false;
+    }
+
+    // make sure that its a known feature
+    if ( isset( ScaleUp::$feature_types[ $feature_type ] ) ) {
+      $plural = ScaleUp::$feature_types[ $feature_type ][ '_plural' ];
+    } else {
+      return false;
+    }
+
+    if ( $this->_features->has( $plural ) ) {
+      $storage = $this->_features->get( $plural );
+      return $storage->get( $name );
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Register feature and return complete arguments array for this feature.
+   * Registration is storing of feature's configuration array without instantiation.
+   *
+   * @param $feature_type
+   * @param $args
+   * @return array|WP_Error
+   */
+  function register( $feature_type, $args ) {
+
+    // make sure that its known feature
+    if ( isset( ScaleUp::$feature_types[ $feature_type ] ) ) {
+
+      $plural = ScaleUp::$feature_types[ $feature_type ][ '_plural' ];
+
+      if ( !$this->_features->has( $plural ) ) {
+        $this->_features->set( $plural, new Base() );
+      }
+
+      $storage = $this->_features->get( $plural );
+
+      $name = null;
+
+      if ( is_array( $args ) ) {
+        $args = wp_parse_args( $args, ScaleUp::$feature_types[ $feature_type ] );
+        if ( isset( $args[ 'name' ] ) ) {
+          $name = $args[ 'name' ];
+        }
+      } elseif ( is_object( $args ) ) {
+        $name = $args->get( 'name' );
+
+      }
+
+      /**
+       * @todo: Add validation here. Validation should happen based on '_requires' argument in $_feature_types declaration
+       */
+      if ( is_null( $name ) ) {
+        return new WP_Error( 'name-missing', __( 'Feature name is required.' ) );
+      }
+
+      $storage->set( $name, $args );
+
+    } else {
+      return new WP_Error( 'invalid-feature-type', sprintf( __( '%s is not a valid feature type.' ), $feature_type ) );
+    }
+
+    return $args;
+  }
+
+  /**
+   * Activation = Instantiation
+   *
+   * During activation, the object is populated with all its duck types and abilities that it supports.
+   *
+   * @see http://en.wikipedia.org/wiki/Duck_typing#In_PHP Duck Types in PHP
+   * Duck Types are methods that are added to the object to match its abilities. duck types are specified via
+   * _duck_types argument which takes an array of its types. Currently, the code supports 2 abilities: routable & contextual.
+   * a "routable" object can be accesed via a url and has a get_url method which returns url of the object.
+   * a "contextual" object can be nested inside of another object in which case it has a "context" property which points
+   * the object's container.
+   *
+   * Support array specifies what kind of features this object supports. For example, an instance of Site supports Apps.
+   * Futher, an App supports Addons, Views & Forms. This makes it possible to programmatically activate features of an
+   * object. This activation happens recursively making it possible to instantiate deeply nested features.
+   *
+   * @param $feature_type
+   * @param $feature
+   * @param array $args
+   * @return Feature|WP_Error
+   */
+  function activate( $feature_type, $feature, $args = array() ) {
+
+    $object = null;
+
+    // make sure that feature type is available
+    if ( isset( ScaleUp::$feature_types[ $feature_type ] ) ) {
+      // get plural name
+      $plural = ScaleUp::$feature_types[ $feature_type ][ '_plural' ];
+
+      // create new feature container
+      if ( !$this->_features->has( $plural ) ) {
+        $this->_features->set( $plural, new Base() );
+      }
+
+      // convinient object
+      $storage = $this->_features->get( $plural );
+
+      if ( is_object( $feature ) ) {    // feature was already instantiate it, we just need to store a reference to it in our internal storage
+        if ( method_exists( $feature, 'has' ) && $feature->has( 'name' ) ) {
+          $storage->set( $feature->get( 'name' ), $feature );
+          $object = $feature;
+        }
+      } elseif ( is_string( $feature ) ) {    // activation by feature name
+        if ( $storage->has( $feature ) ) {    // check that feature has been registered and has arguments
+          $object = $storage->get( $feature );
+          if ( is_array( $object ) ) {
+            $args[ 'name' ] = $feature;
+            $args = wp_parse_args( $object, $args );
+            if ( isset( $args[ '__CLASS__' ] ) ) {
+              $class = $args[ '__CLASS__' ];
+              if ( class_exists( $class ) ) {
+                $object = new $class( $args );
+                $object->is( 'contextual' );
+                $object->set( 'context', $this );
+              } else {
+                return new WP_Error( 'activation-failed', sprintf( __( '%s class does not exist.' ), $class ) );
+              }
+            }
+          } elseif ( is_object( $object ) ) {
+            // do nothing
+          } else {
+            return new WP_Error( 'activation-failed' , __( 'Registered feature could not be activated because arguments are not an array or object.' ) );
+          }
+        }
+      }
+    }
+    if ( is_object( $object ) ) {
+      $object = apply_filters( 'activate_feature', $object );
+    }
+    return $object;
   }
 
   /**
@@ -406,15 +421,13 @@ class Feature extends Base {
    * @return bool
    */
   function is( $duck_type ) {
-    $method = "is_$duck_type";
-    if ( property_exists( $this, $method ) && is_callable( $this->$method ) ) {
-      return $this->$method();
-    }
-    if ( method_exists( $this, $method ) ) {
-      return $this->$method();
+    if ( $this->has( '_duck_types' ) ) {
+      $duck_types = $this->get( '_duck_types' );
+      return in_array( $duck_type, $duck_types );
     }
     return false;
   }
+
 }
 
 class Site extends Feature {
@@ -425,9 +438,22 @@ class Site extends Feature {
     return self::$_this;
   }
 
-  function __construct() {
-    
+  function __construct( $args ) {
+
+    if ( isset( self::$_this ) ) {
+      return new WP_Error( 'instantiation-error', sprintf( __( '%s class is a singleton and can not be initialized twice.' ), __CLASS__ ) );
+    }
+    parent::__construct( $args );
+
   }
+
+  function get_defaults() {
+    return wp_parse_args(
+      array(
+           '_feature_type' => 'site',
+      ), parent::get_defaults() );
+  }
+
 }
 
 class Addon extends Feature {
@@ -457,9 +483,6 @@ class View extends Feature {
 }
 
 new ScaleUp();
-
-ScaleUp::register( 'site', array( 'name' => 'WordPress' ) );
-ScaleUp::activate( 'site', 'WordPress' );
 
 ?>
 <pre>
