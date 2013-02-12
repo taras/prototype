@@ -9,6 +9,7 @@ class ScaleUp {
       '_feature_type' => 'site',
       '_plural'       => 'sites',
       '_supports'     => array( 'apps' ),
+      '_duck_types'   => array( 'routable' ),
     ),
     'app'   => array(
       '__CLASS__'     => 'App',
@@ -37,6 +38,7 @@ class ScaleUp {
       '_plural'       => 'forms',
     ),
   );
+  private static $_duck_types;
 
   function __construct() {
     if ( isset( self::$_this ) ) {
@@ -45,6 +47,34 @@ class ScaleUp {
       self::$_this = $this;
     }
     self::$_features = new Base();
+    self::$_duck_types = array(
+      'routable' => array(
+        'get_url' => function( $args = array() ) {
+          if ( ( property_exists( $this, 'get_context' ) && is_callable( $this->get_context ) ) || method_exists( $this, 'get_context' ) ) {
+            $context = $this->get_context();
+            if ( ( property_exists( $context, 'get_url' ) && is_callable( $context->get_url ) ) || method_exists( $context, 'get_url' ) ) {
+              return $context->get_url() . '/' . $this->_url;
+            }
+          }
+          if ( property_exists( $this, '_url' ) ) {
+            return $this->_url;
+          }
+          return null;
+        },
+        'is_routable' => function ( $args = array() ) {
+          return method_exists( $this, 'get_url' );
+        },
+      ),
+      'contextual' => array(
+        'is_contextual' => function( $args = array() ) {
+          if ( $this->has( 'context' ) ) {
+            $context = $this->get( 'context' );
+            return is_object( $context );
+          }
+          return false;
+        }
+      ),
+    );
     add_filter( 'activate_feature', array( $this, 'add_duck_types') );
     add_filter( 'activate_feature', array( $this, 'add_support' ) );
   }
@@ -266,36 +296,18 @@ class ScaleUp {
     return $object;
   }
 
-  function add_duck_types( $obj ) {
-    if ( $obj->has( '_duck_types' ) && is_array( $obj->get( '_duck_types' ) ) ) {
-      $duck_types = $obj->get( '_duck_types' );
+  function add_duck_types( $object ) {
+    if ( $object->has( '_duck_types' ) && is_array( $object->get( '_duck_types' ) ) ) {
+      $duck_types = $object->get( '_duck_types' );
+      $scaleup = ScaleUp::this();
       foreach ( $duck_types as $duck_type ) {
-        switch ( $duck_type ) :
-          case 'routable':
-            $obj->get_url = function( $args ) {
-              list( $obj ) = $args;
-              if ( ( property_exists( $obj, 'get_context' ) && is_callable( $obj->get_context ) ) || method_exists( $obj, 'get_context' ) ) {
-                $context = $obj->get_context();
-                if ( ( property_exists( $context, 'get_url' ) && is_callable( $obj->get_url ) ) || method_exists( $context, 'get_url' ) ) {
-                  return $context->get_url() . '/' . $obj->_url;
-                }
-              }
-              if ( property_exists( $obj, '_url' ) ) {
-                return $obj->_url;
-              }
-              return null;
-            };
-            break;
-          case 'contextual':
-            /**
-             * @todo: add contextual methods
-             */
-            break;
-          default:
-        endswitch;
+        $methods = $scaleup::$_duck_types[ $duck_type ];
+        foreach ( $methods as $name => $function ) {
+          $this->$name = $function;
+        }
       }
     }
-    return $obj;
+    return $object;
   }
 }
 
@@ -319,8 +331,7 @@ class Base extends stdClass {
   public function __call( $method, $args = array() ) {
     if ( isset( $this->$method ) && is_callable( $this->$method )) {
     $func = $this->$method;
-      array_unshift($args, $this);
-      return $func( $args );
+      return $func( $args, $this );
     }
   }
 
@@ -387,10 +398,36 @@ class Feature extends Base {
       $scaleup->activate( $this->get( '_feature_type' ), $this );
     }
   }
+
+  /**
+   * Return true if instance is of specified duck type
+   *
+   * @param $duck_type
+   * @return bool
+   */
+  function is( $duck_type ) {
+    $method = "is_$duck_type";
+    if ( property_exists( $this, $method ) && is_callable( $this->$method ) ) {
+      return $this->$method();
+    }
+    if ( method_exists( $this, $method ) ) {
+      return $this->$method();
+    }
+    return false;
+  }
 }
 
 class Site extends Feature {
 
+  private static $_this;
+
+  function this() {
+    return self::$_this;
+  }
+
+  function __construct() {
+    
+  }
 }
 
 class Addon extends Feature {
